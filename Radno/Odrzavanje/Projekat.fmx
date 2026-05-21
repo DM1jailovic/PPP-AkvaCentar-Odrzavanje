@@ -1,0 +1,14 @@
+object frmMain: TfrmMain
+  Left = 0
+  Top = 0
+  Caption = 'AquaCentar'
+  ClientHeight = 760
+  ClientWidth = 420
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  OnShow = FormShow
+  DesignerMasterStyle = 0
+end

@@ -1,0 +1,16 @@
+program OdrzavanjeAC;
+
+uses
+  System.StartUpCopy,
+  FMX.Forms,
+  Projekat in 'Projekat.pas' {frmMain},
+  Unit2 in 'Unit2.pas' {dmData: TDataModule};
+
+{$R *.res}
+
+begin
+  Application.Initialize;
+  Application.CreateForm(TdmData, dmData);
+  Application.CreateForm(TfrmMain, frmMain);
+  Application.Run;
+end.                          5

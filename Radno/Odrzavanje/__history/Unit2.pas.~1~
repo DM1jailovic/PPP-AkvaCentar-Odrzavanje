@@ -1,0 +1,399 @@
+﻿unit Unit2;
+
+{
+  ================================================================
+  AquaCentar — Upravljanje Odrzavanjem
+  DataModule — Firebird Embedded, prenosiva baza
+
+  Baza se automatski kreira u:
+    <exe_folder>\Baza\ODRZAVANJE.FDB
+
+  Nema servera, nema instalacije — samo exe + Firebird DLL-ovi.
+
+  Potrebni DLL-ovi pored .exe (Firebird 3.0 Embedded, 32-bit):
+    fbclient.dll
+    ib_util.dll
+    icudt52.dll  (ili icudt63.dll za FB4)
+    icuin52.dll
+    icuuc52.dll
+    plugins\engine12.dll  (FB3) ili plugins\engine13.dll (FB4)
+    intl\fbintl.dll
+    firebird.conf
+    firebird.msg
+
+  Sve ove fajlove kopirati iz:
+    C:\Program Files\Firebird\Firebird_3_0\  (embedded build)
+  ili skinuti Firebird Embedded zip sa firebirdsql.org
+  ================================================================
+}
+
+interface
+
+uses
+  System.SysUtils, System.Classes, System.IOUtils,
+  FireDAC.Stan.Intf, FireDAC.Stan.Option, FireDAC.Stan.Error,
+  FireDAC.UI.Intf, FireDAC.Phys.Intf, FireDAC.Stan.Def,
+  FireDAC.Stan.Pool, FireDAC.Stan.Async, FireDAC.Phys,
+  FireDAC.Phys.FB, FireDAC.Phys.FBDef,
+  FireDAC.FMXUI.Wait, FireDAC.Comp.UI,
+  FireDAC.Stan.Param, FireDAC.DatS, FireDAC.DApt.Intf, FireDAC.DApt,
+  Data.DB, FireDAC.Comp.DataSet, FireDAC.Comp.Client,
+  FMX.Dialogs;
+
+type
+  TdmData = class(TDataModule)
+  private
+    FConn       : TFDConnection;
+    FDriverLink : TFDPhysFBDriverLink;
+    FWaitCursor : TFDGUIxWaitCursor;
+    FqEquipment : TFDQuery;
+    FqMaintLog  : TFDQuery;
+    FqHelper    : TFDQuery;
+
+    function  GetDatabasePath: string;
+    procedure EnsureFolders;
+    procedure InitConnection;
+    procedure CreateTablesIfNotExist;
+    procedure InsertSampleDataIfEmpty;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor  Destroy; override;
+
+    procedure DataModuleCreate(Sender: TObject);
+
+    property Conn       : TFDConnection read FConn;
+    property qEquipment : TFDQuery      read FqEquipment;
+    property qMaintLog  : TFDQuery      read FqMaintLog;
+    property qHelper    : TFDQuery      read FqHelper;
+
+    function  IsConnected: Boolean;
+    function  ExecScalar(const ASQL: string): Integer;
+    procedure CommitWork;
+    procedure ExecSQL(const ASQL: string);
+  end;
+
+var
+  dmData: TdmData;
+
+implementation
+
+{%CLASSGROUP 'FMX.Controls.TControl'}
+
+{$R *.dfm}
+
+{ ===================================================================
+  CONSTRUCTOR / DESTRUCTOR
+  =================================================================== }
+
+constructor TdmData.Create(AOwner: TComponent);
+begin
+  inherited;
+  DataModuleCreate(Self);
+end;
+
+destructor TdmData.Destroy;
+begin
+  if Assigned(FConn) and FConn.Connected then
+    FConn.Close;
+  FqHelper.Free;
+  FqMaintLog.Free;
+  FqEquipment.Free;
+  FWaitCursor.Free;
+  FConn.Free;
+  FDriverLink.Free;
+  inherited;
+end;
+
+{ ===================================================================
+  DATAMODULE CREATE — glavni init (isti pattern kao u primeru)
+  =================================================================== }
+
+procedure TdmData.DataModuleCreate(Sender: TObject);
+begin
+  { 1. Osiguraj da postoji Baza\ folder }
+  EnsureFolders;
+
+  { 2. Inicijalizuj Firebird Embedded konekciju }
+  InitConnection;
+
+  { 3. Kreiraj tabele ako ne postoje }
+  try
+    FConn.Open;
+
+    if FConn.Connected then
+    begin
+      CreateTablesIfNotExist;
+      InsertSampleDataIfEmpty;
+
+      { Inicijalizuj query komponente }
+      FqEquipment := TFDQuery.Create(nil);
+      FqEquipment.Connection := FConn;
+
+      FqMaintLog := TFDQuery.Create(nil);
+      FqMaintLog.Connection := FConn;
+
+      FqHelper := TFDQuery.Create(nil);
+      FqHelper.Connection := FConn;
+    end;
+  except
+    on E: Exception do
+      ShowMessage('Greska pri inicijalizaciji baze:' + sLineBreak + E.Message);
+  end;
+end;
+
+{ ===================================================================
+  HELPERS — putanja, folderi, konekcija
+  =================================================================== }
+
+function TdmData.GetDatabasePath: string;
+var
+  LBazaFolder: string;
+begin
+  { Baza\ folder pored .exe — isti pattern kao u primeru }
+  LBazaFolder := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Baza');
+  Result      := TPath.Combine(LBazaFolder, 'ODRZAVANJE.FDB');
+end;
+
+procedure TdmData.EnsureFolders;
+var
+  LBazaFolder: string;
+begin
+  LBazaFolder := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Baza');
+
+  if not TDirectory.Exists(LBazaFolder) then
+    TDirectory.CreateDirectory(LBazaFolder);
+end;
+
+procedure TdmData.InitConnection;
+begin
+  { Driver link — govori FireDAC-u da koristi fbclient.dll pored exe-a }
+  FDriverLink := TFDPhysFBDriverLink.Create(nil);
+  FDriverLink.VendorLib := TPath.Combine(
+    ExtractFilePath(ParamStr(0)), 'fbembed.dll');
+
+  { Wait cursor za FMX }
+  FWaitCursor := TFDGUIxWaitCursor.Create(nil);
+  FWaitCursor.Provider := 'FMX';
+
+  { Konekcija — Firebird Embedded (nema Server, nema Port) }
+  FConn := TFDConnection.Create(nil);
+  FConn.DriverName  := 'FB';
+  FConn.LoginPrompt := False;
+
+  FConn.Params.Clear;
+  FConn.Params.DriverID              := 'FB';
+  FConn.Params.Add('Database='       + GetDatabasePath);
+  FConn.Params.Add('User_Name=SYSDBA');
+  FConn.Params.Add('Password=masterkey');
+  FConn.Params.Add('CharacterSet=UTF8');
+  FConn.Params.Add('Protocol=Local');       // Embedded — bez TCP!
+  FConn.Params.Add('CreateDatabase=Yes');   // Ako .fdb ne postoji — kreira je
+end;
+
+{ ===================================================================
+  CREATE TABLES IF NOT EXIST
+  Isti pattern kao u primeru — ExecSQL u AfterConnect / nakon Open
+  =================================================================== }
+
+procedure TdmData.CreateTablesIfNotExist;
+begin
+  { ── EQUIPMENT_CENTER ──────────────────────────────────── }
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$RELATIONS ' +
+    '      WHERE RDB$RELATION_NAME = ''EQUIPMENT_CENTER'')) THEN ' +
+    '  EXECUTE STATEMENT ' +
+    '  ''CREATE TABLE EQUIPMENT_CENTER ( ' +
+    '    EQ_ID            INTEGER       NOT NULL, ' +
+    '    EQ_NAME          VARCHAR(100)  NOT NULL, ' +
+    '    EQ_TYPE          VARCHAR(50)   NOT NULL, ' +
+    '    EQ_MODEL         VARCHAR(100), ' +
+    '    EQ_SERIAL        VARCHAR(100), ' +
+    '    EQ_STATUS        VARCHAR(20)   DEFAULT ''''Aktivna'''', ' +
+    '    EQ_PURCHASE_DATE DATE, ' +
+    '    EQ_NOTES         VARCHAR(500), ' +
+    '    CONSTRAINT PK_EQUIPMENT_CENTER PRIMARY KEY (EQ_ID))''; ' +
+    'END'
+  );
+
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$GENERATORS ' +
+    '      WHERE RDB$GENERATOR_NAME = ''SEQ_EQ_CENTER_ID'')) THEN ' +
+    '  EXECUTE STATEMENT ''CREATE SEQUENCE SEQ_EQ_CENTER_ID''; ' +
+    'END'
+  );
+
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$TRIGGERS ' +
+    '      WHERE RDB$TRIGGER_NAME = ''TRG_EQ_CENTER_BI'')) THEN ' +
+    '  EXECUTE STATEMENT ' +
+    '  ''CREATE TRIGGER TRG_EQ_CENTER_BI FOR EQUIPMENT_CENTER ' +
+    '    ACTIVE BEFORE INSERT POSITION 0 AS BEGIN ' +
+    '    IF (NEW.EQ_ID IS NULL OR NEW.EQ_ID = 0) THEN ' +
+    '      NEW.EQ_ID = NEXT VALUE FOR SEQ_EQ_CENTER_ID; ' +
+    '    END''; ' +
+    'END'
+  );
+
+  { ── MAINTENANCE_LOG ────────────────────────────────────── }
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$RELATIONS ' +
+    '      WHERE RDB$RELATION_NAME = ''MAINTENANCE_LOG'')) THEN ' +
+    '  EXECUTE STATEMENT ' +
+    '  ''CREATE TABLE MAINTENANCE_LOG ( ' +
+    '    ML_ID            INTEGER        NOT NULL, ' +
+    '    ML_EQ_ID         INTEGER        NOT NULL, ' +
+    '    ML_DATE          DATE           NOT NULL, ' +
+    '    ML_TYPE          VARCHAR(50)    NOT NULL, ' +
+    '    ML_DESCRIPTION   VARCHAR(1000)  NOT NULL, ' +
+    '    ML_PERFORMED_BY  VARCHAR(100), ' +
+    '    ML_COST          DECIMAL(10,2)  DEFAULT 0, ' +
+    '    ML_STATUS        VARCHAR(20)    DEFAULT ''''Na cekanju'''', ' +
+    '    ML_NEXT_DUE      DATE, ' +
+    '    ML_NOTES         VARCHAR(500), ' +
+    '    CONSTRAINT PK_MAINTENANCE_LOG PRIMARY KEY (ML_ID), ' +
+    '    CONSTRAINT FK_ML_EQUIPMENT FOREIGN KEY (ML_EQ_ID) ' +
+    '      REFERENCES EQUIPMENT_CENTER (EQ_ID) ON DELETE CASCADE)''; ' +
+    'END'
+  );
+
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$GENERATORS ' +
+    '      WHERE RDB$GENERATOR_NAME = ''SEQ_ML_ID'')) THEN ' +
+    '  EXECUTE STATEMENT ''CREATE SEQUENCE SEQ_ML_ID''; ' +
+    'END'
+  );
+
+  FConn.ExecSQL(
+    'EXECUTE BLOCK AS BEGIN ' +
+    '  IF (NOT EXISTS ( ' +
+    '      SELECT 1 FROM RDB$TRIGGERS ' +
+    '      WHERE RDB$TRIGGER_NAME = ''TRG_ML_BI'')) THEN ' +
+    '  EXECUTE STATEMENT ' +
+    '  ''CREATE TRIGGER TRG_ML_BI FOR MAINTENANCE_LOG ' +
+    '    ACTIVE BEFORE INSERT POSITION 0 AS BEGIN ' +
+    '    IF (NEW.ML_ID IS NULL OR NEW.ML_ID = 0) THEN ' +
+    '      NEW.ML_ID = NEXT VALUE FOR SEQ_ML_ID; ' +
+    '    END''; ' +
+    'END'
+  );
+
+  FConn.Commit;
+end;
+
+{ ===================================================================
+  SAMPLE DATA — ubaci probne podatke samo ako su tabele prazne
+  =================================================================== }
+
+procedure TdmData.InsertSampleDataIfEmpty;
+var
+  Q: TFDQuery;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := FConn;
+    Q.SQL.Text   := 'SELECT COUNT(*) FROM EQUIPMENT_CENTER';
+    Q.Open;
+    if Q.Fields[0].AsInteger > 0 then Exit;  // vec ima podataka
+    Q.Close;
+  finally
+    Q.Free;
+  end;
+
+  FConn.ExecSQL(
+    'INSERT INTO EQUIPMENT_CENTER ' +
+    '(EQ_NAME, EQ_TYPE, EQ_MODEL, EQ_SERIAL, EQ_STATUS, EQ_PURCHASE_DATE, EQ_NOTES) ' +
+    'VALUES (''Sea Ray 210'', ''Camac'', ''Sea Ray SPX 210'', ''SR210-001'', ' +
+    '''Aktivna'', ''2021-04-15'', ''Primarni camac za iznajmljivanje'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO EQUIPMENT_CENTER ' +
+    '(EQ_NAME, EQ_TYPE, EQ_MODEL, EQ_SERIAL, EQ_STATUS, EQ_PURCHASE_DATE, EQ_NOTES) ' +
+    'VALUES (''WaveRunner FX'', ''Jet Ski'', ''Yamaha FX Cruiser'', ''YFX-2022-001'', ' +
+    '''Aktivna'', ''2022-06-01'', ''Visokonaponska jedinica'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO EQUIPMENT_CENTER ' +
+    '(EQ_NAME, EQ_TYPE, EQ_MODEL, EQ_SERIAL, EQ_STATUS, EQ_PURCHASE_DATE, EQ_NOTES) ' +
+    'VALUES (''Kajak Set A'', ''Kajak'', ''Perception Pescador 10'', ''KYK-A-001'', ' +
+    '''Aktivna'', ''2020-03-10'', ''Set od 4 kajaka'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO EQUIPMENT_CENTER ' +
+    '(EQ_NAME, EQ_TYPE, EQ_MODEL, EQ_SERIAL, EQ_STATUS, EQ_PURCHASE_DATE, EQ_NOTES) ' +
+    'VALUES (''Motorni camac B2'', ''Camac'', ''Bayliner Element F18'', ''BEF18-002'', ' +
+    '''Na popravci'', ''2019-07-05'', ''Servisiranje motora u toku'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO MAINTENANCE_LOG ' +
+    '(ML_EQ_ID, ML_DATE, ML_TYPE, ML_DESCRIPTION, ML_PERFORMED_BY, ML_COST, ML_STATUS, ML_NEXT_DUE) ' +
+    'VALUES (1, ''2024-03-01'', ''Rutinsko'', ' +
+    '''Kompletan servis motora, zamena ulja, provera impelera'', ' +
+    '''Marko Jovanovic'', 35000.00, ''Zavrseno'', ''2024-09-01'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO MAINTENANCE_LOG ' +
+    '(ML_EQ_ID, ML_DATE, ML_TYPE, ML_DESCRIPTION, ML_PERFORMED_BY, ML_COST, ML_STATUS, ML_NEXT_DUE) ' +
+    'VALUES (2, ''2024-04-10'', ''Popravka'', ' +
+    '''Zamena kabla gasa i pregled trupa'', ' +
+    '''Nikola Petrovic'', 18000.00, ''Zavrseno'', ''2024-10-10'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO MAINTENANCE_LOG ' +
+    '(ML_EQ_ID, ML_DATE, ML_TYPE, ML_DESCRIPTION, ML_PERFORMED_BY, ML_COST, ML_STATUS, ML_NEXT_DUE) ' +
+    'VALUES (1, ''2024-06-15'', ''Inspekcija'', ' +
+    '''Presezonska bezbednosna inspekcija'', ' +
+    '''Marko Jovanovic'', 7500.00, ''Na cekanju'', ''2025-06-15'')');
+
+  FConn.ExecSQL(
+    'INSERT INTO MAINTENANCE_LOG ' +
+    '(ML_EQ_ID, ML_DATE, ML_TYPE, ML_DESCRIPTION, ML_PERFORMED_BY, ML_COST, ML_STATUS) ' +
+    'VALUES (4, ''2024-05-20'', ''Popravka'', ' +
+    '''Popravka motora — curenje rashladne tecnosti'', ' +
+    '''Sreten Milic'', 45000.00, ''U toku'')');
+
+  FConn.Commit;
+end;
+
+{ ===================================================================
+  PUBLIC HELPERS
+  =================================================================== }
+
+function TdmData.IsConnected: Boolean;
+begin
+  Result := Assigned(FConn) and FConn.Connected;
+end;
+
+function TdmData.ExecScalar(const ASQL: string): Integer;
+begin
+  Result := 0;
+  if not IsConnected then Exit;
+  FqHelper.SQL.Text := ASQL;
+  FqHelper.Open;
+  if not FqHelper.IsEmpty then
+    Result := FqHelper.Fields[0].AsInteger;
+  FqHelper.Close;
+end;
+
+procedure TdmData.CommitWork;
+begin
+  if IsConnected then
+    FConn.Commit;
+end;
+
+procedure TdmData.ExecSQL(const ASQL: string);
+begin
+  if IsConnected then
+    FConn.ExecSQL(ASQL);
+end;
+
+end.

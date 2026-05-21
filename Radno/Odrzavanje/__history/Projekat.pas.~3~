@@ -1,0 +1,1043 @@
+﻿unit Projekat;
+
+{
+  ================================================================
+  AquaCentar — Upravljanje Odrzavanjem
+  Firebird Embedded — baza automatski u Baza\ folderu pored exe
+
+  Nema login ekrana — aplikacija se otvara direktno na Dashboard.
+  Unit2.DataModuleCreate() kreira bazu i tabele pri prvom pokretanju.
+  ================================================================
+}
+
+interface
+
+uses
+  System.SysUtils, System.Types, System.UITypes, System.Classes,
+  System.Variants, System.IOUtils, System.DateUtils,
+  FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs,
+  FMX.TabControl, FMX.Layouts, FMX.StdCtrls, FMX.Edit,
+  FMX.Controls.Presentation, FMX.Objects, FMX.ScrollBox,
+  FMX.ListView, FMX.ListView.Types, FMX.ListView.Appearances,
+  FMX.ListView.Adapters.Base, FMX.ComboEdit, FMX.Memo,
+  FMX.Memo.Types,
+  FireDAC.Comp.Client, FireDAC.Stan.Param,
+  Data.DB,
+  Unit2;
+
+type
+  TfrmMain = class(TForm)
+
+    { ── Glavni tab kontroler ─────────────────────────── }
+    tcMain      : TTabControl;
+    tiDashboard : TTabItem;
+    tiOprema    : TTabItem;
+    tiNalozi    : TTabItem;
+
+    { ── TOOLBAR ──────────────────────────────────────── }
+    ToolBar1      : TToolBar;
+    lblToolTitle  : TLabel;
+    btnNavDash    : TButton;
+    btnNavOp      : TButton;
+    btnNavNal     : TButton;
+
+    { ── STATUS BAR (dno — pokazuje putanju do baze) ──── }
+    pnlStatus     : TPanel;
+    lblStatusPath : TLabel;
+
+    { ── DASHBOARD ────────────────────────────────────── }
+    lblDashTitle   : TLabel;
+    rectUkOprem    : TRectangle;
+    rectAktOprem   : TRectangle;
+    rectNaCek      : TRectangle;
+    rectZavrs      : TRectangle;
+    lblUkOprem     : TLabel;
+    lblAktOprem    : TLabel;
+    lblNaCek       : TLabel;
+    lblZavrs       : TLabel;
+    btnRefreshDash : TButton;
+
+    { ── OPREMA — lista ───────────────────────────────── }
+    pnlOpList   : TPanel;
+    lblOpTitle  : TLabel;
+    edtOpSearch : TEdit;
+    btnOpSearch : TButton;
+    lstOprema   : TListView;
+    btnOpNew    : TButton;
+    btnOpEdit   : TButton;
+    btnOpDelete : TButton;
+
+    { ── OPREMA — forma ───────────────────────────────── }
+    pnlOpDetail    : TPanel;
+    lblOpFormTitle : TLabel;
+    lblOpNaziv     : TLabel;  edtOpNaziv  : TEdit;
+    lblOpTip       : TLabel;  cmbOpTip    : TComboEdit;
+    lblOpStatus    : TLabel;  cmbOpStatus : TComboEdit;
+    lblOpModel     : TLabel;  edtOpModel  : TEdit;
+    lblOpSerial    : TLabel;  edtOpSerial : TEdit;
+    lblOpDatum     : TLabel;  edtOpDatum  : TEdit;
+    lblOpNap       : TLabel;  memoOpNap   : TMemo;
+    btnOpSave      : TButton;
+    btnOpCancel    : TButton;
+    lblOpError     : TLabel;
+
+    { ── NALOZI — lista ───────────────────────────────── }
+    pnlNalList   : TPanel;
+    lblNalTitle  : TLabel;
+    cmbNalFilter : TComboEdit;
+    btnNalFilter : TButton;
+    lstNalozi    : TListView;
+    btnNalNew    : TButton;
+    btnNalEdit   : TButton;
+    btnNalDelete : TButton;
+
+    { ── NALOZI — forma ───────────────────────────────── }
+    pnlNalDetail    : TPanel;
+    lblNalFormTitle : TLabel;
+    lblNalOprema    : TLabel;  cmbNalOprema  : TComboEdit;
+    lblNalDatum     : TLabel;  edtNalDatum   : TEdit;
+    lblNalTip       : TLabel;  cmbNalTip     : TComboEdit;
+    lblNalStatus    : TLabel;  cmbNalStatus  : TComboEdit;
+    lblNalTrosak    : TLabel;  edtNalTrosak  : TEdit;
+    lblNalIzvrsio   : TLabel;  edtNalIzvrsio : TEdit;
+    lblNalSledeci   : TLabel;  edtNalSledeci : TEdit;
+    lblNalOpis      : TLabel;  memoNalOpis   : TMemo;
+    lblNalNap       : TLabel;  memoNalNap    : TMemo;
+    btnNalSave      : TButton;
+    btnNalCancel    : TButton;
+    lblNalError     : TLabel;
+
+    { ── Event handleri ───────────────────────────────── }
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure tcMainChange(Sender: TObject);
+
+    { Dashboard }
+    procedure btnNavDashClick(Sender: TObject);
+    procedure btnNavOpClick(Sender: TObject);
+    procedure btnNavNalClick(Sender: TObject);
+    procedure btnRefreshDashClick(Sender: TObject);
+
+    { Oprema }
+    procedure btnOpSearchClick(Sender: TObject);
+    procedure btnOpNewClick(Sender: TObject);
+    procedure btnOpEditClick(Sender: TObject);
+    procedure btnOpDeleteClick(Sender: TObject);
+    procedure btnOpSaveClick(Sender: TObject);
+    procedure btnOpCancelClick(Sender: TObject);
+
+    { Nalozi }
+    procedure btnNalFilterClick(Sender: TObject);
+    procedure btnNalNewClick(Sender: TObject);
+    procedure btnNalEditClick(Sender: TObject);
+    procedure btnNalDeleteClick(Sender: TObject);
+    procedure btnNalSaveClick(Sender: TObject);
+    procedure btnNalCancelClick(Sender: TObject);
+
+  private
+    FOpCurrentID  : Integer;
+    FOpIsNew      : Boolean;
+    FNalCurrentID : Integer;
+    FNalIsNew     : Boolean;
+    FEquipIDs     : array of Integer;
+
+    { UI Builder }
+    procedure BuildUI;
+
+    { Dashboard }
+    procedure RefreshDashboard;
+
+    { Oprema }
+    procedure LoadOprema(const AFilter: string = '');
+    procedure ShowOpDetail(ANew: Boolean);
+    procedure HideOpDetail;
+    procedure PopulateOpDetail(AID: Integer);
+    function  OpSelectedID: Integer;
+    procedure SetOpError(const S: string);
+
+    { Nalozi }
+    procedure LoadNalozi(const AStatusFilter: string = '');
+    procedure ShowNalDetail(ANew: Boolean);
+    procedure HideNalDetail;
+    procedure PopulateNalDetail(AID: Integer);
+    procedure LoadEquipCombo;
+    function  NalSelectedID: Integer;
+    procedure SetNalError(const S: string);
+
+    { UI factory }
+    function MkLbl(AParent: TFmxObject; const AText: string;
+               X, Y, W, H, ASize: Single; ABold: Boolean = False): TLabel;
+    function MkEdit(AParent: TFmxObject; X, Y, W: Single;
+               const APrompt: string = ''): TEdit;
+    function MkBtn(AParent: TFmxObject; const AText: string;
+               X, Y, W, H: Single): TButton;
+    function MkCombo(AParent: TFmxObject; X, Y, W: Single): TComboEdit;
+    function MkRect(AParent: TFmxObject; X, Y, W, H: Single;
+               AColor: TAlphaColor): TRectangle;
+    function MkMemo(AParent: TFmxObject; X, Y, W, H: Single): TMemo;
+  public
+  end;
+
+var
+  frmMain: TfrmMain;
+
+implementation
+
+{$R *.fmx}
+
+{ ===================================================================
+  UI FACTORY
+  =================================================================== }
+
+function TfrmMain.MkLbl(AParent: TFmxObject; const AText: string;
+  X, Y, W, H, ASize: Single; ABold: Boolean): TLabel;
+begin
+  Result := TLabel.Create(Self);
+  Result.Parent     := AParent;
+  Result.Text       := AText;
+  Result.Position.X := X; Result.Position.Y := Y;
+  Result.Width      := W; Result.Height     := H;
+  Result.Font.Size  := ASize;
+  if ABold then Result.Font.Style := [TFontStyle.fsBold];
+end;
+
+function TfrmMain.MkEdit(AParent: TFmxObject; X, Y, W: Single;
+  const APrompt: string): TEdit;
+begin
+  Result := TEdit.Create(Self);
+  Result.Parent     := AParent;
+  Result.Position.X := X; Result.Position.Y := Y;
+  Result.Width      := W; Result.Height     := 34;
+  if APrompt <> '' then Result.TextPrompt := APrompt;
+end;
+
+function TfrmMain.MkBtn(AParent: TFmxObject; const AText: string;
+  X, Y, W, H: Single): TButton;
+begin
+  Result := TButton.Create(Self);
+  Result.Parent     := AParent;
+  Result.Text       := AText;
+  Result.Position.X := X; Result.Position.Y := Y;
+  Result.Width      := W; Result.Height     := H;
+end;
+
+function TfrmMain.MkCombo(AParent: TFmxObject; X, Y, W: Single): TComboEdit;
+begin
+  Result := TComboEdit.Create(Self);
+  Result.Parent     := AParent;
+  Result.Position.X := X; Result.Position.Y := Y;
+  Result.Width      := W; Result.Height     := 34;
+end;
+
+function TfrmMain.MkRect(AParent: TFmxObject; X, Y, W, H: Single;
+  AColor: TAlphaColor): TRectangle;
+begin
+  Result := TRectangle.Create(Self);
+  Result.Parent       := AParent;
+  Result.Position.X   := X; Result.Position.Y := Y;
+  Result.Width        := W; Result.Height     := H;
+  Result.Fill.Color   := AColor;
+  Result.Stroke.Color := TAlphaColorRec.Null;
+  Result.XRadius      := 12; Result.YRadius   := 12;
+end;
+
+function TfrmMain.MkMemo(AParent: TFmxObject; X, Y, W, H: Single): TMemo;
+begin
+  Result := TMemo.Create(Self);
+  Result.Parent     := AParent;
+  Result.Position.X := X; Result.Position.Y := Y;
+  Result.Width      := W; Result.Height     := H;
+end;
+
+{ ===================================================================
+  BUILD UI
+  =================================================================== }
+
+procedure TfrmMain.BuildUI;
+var
+  R  : TRectangle;
+  RR : TRectangle;
+  L  : TLabel;
+
+  { dashboard rows added inline below }
+
+var
+  DashY: Single;
+begin
+  Self.Caption := 'AquaCentar — Upravljanje Odrzavanjem';
+  Self.Width   := 980;
+  Self.Height  := 720;
+
+  { ── TOOLBAR ────────────────────────────────────────────── }
+  ToolBar1 := TToolBar.Create(Self);
+  ToolBar1.Parent := Self;
+  ToolBar1.Align  := TAlignLayout.Top;
+  ToolBar1.Height := 52;
+
+  lblToolTitle := MkLbl(ToolBar1, '🌊  AquaCentar — Odrzavanje', 14, 12, 380, 30, 17, True);
+  lblToolTitle.FontColor := TAlphaColorRec.White;
+
+  btnNavDash := MkBtn(ToolBar1, 'Dashboard', 440, 11, 120, 32);
+  btnNavDash.OnClick := btnNavDashClick;
+
+  btnNavOp := MkBtn(ToolBar1, 'Oprema', 568, 11, 100, 32);
+  btnNavOp.OnClick := btnNavOpClick;
+
+  btnNavNal := MkBtn(ToolBar1, 'Nalozi', 676, 11, 100, 32);
+  btnNavNal.OnClick := btnNavNalClick;
+
+  { ── STATUS BAR ─────────────────────────────────────────── }
+  pnlStatus := TPanel.Create(Self);
+  pnlStatus.Parent  := Self;
+  pnlStatus.Align   := TAlignLayout.Bottom;
+  pnlStatus.Height  := 28;
+
+  lblStatusPath := MkLbl(pnlStatus, '', 8, 5, 960, 20, 11);
+  lblStatusPath.FontColor := TAlphaColorRec.Gray;
+
+  { ── TAB CONTROL ─────────────────────────────────────────── }
+  tcMain := TTabControl.Create(Self);
+  tcMain.Parent      := Self;
+  tcMain.Align       := TAlignLayout.Client;
+  tcMain.TabPosition := TTabPosition.None;
+  tcMain.OnChange    := tcMainChange;
+
+  tiDashboard := TTabItem.Create(Self); tiDashboard.Parent := tcMain; tiDashboard.Text := 'Dashboard';
+  tiOprema    := TTabItem.Create(Self); tiOprema.Parent    := tcMain; tiOprema.Text    := 'Oprema';
+  tiNalozi    := TTabItem.Create(Self); tiNalozi.Parent    := tcMain; tiNalozi.Text    := 'Nalozi';
+
+  { ════════════════════════════════════════════════════════════
+    DASHBOARD
+    ════════════════════════════════════════════════════════════ }
+  lblDashTitle := MkLbl(tiDashboard, 'Pregled Odrzavanja', 20, 16, 500, 34, 20, True);
+  lblDashTitle.FontColor := $FF1F4E79;
+
+  R := MkRect(tiDashboard, 20, 64, 210, 110, $FF2196F3);
+  L := MkLbl(R, 'Ukupno Opreme',   12, 10, 186, 22, 11); L.FontColor := TAlphaColorRec.White;
+  lblUkOprem := MkLbl(R, '—', 12, 42, 186, 48, 32, True); lblUkOprem.FontColor := TAlphaColorRec.White;
+  MkLbl(R, 'jedinica', 12, 86, 186, 18, 10).FontColor := TAlphaColorRec.White;
+
+  R := MkRect(tiDashboard, 246, 64, 210, 110, $FF4CAF50);
+  L := MkLbl(R, 'Aktivna Oprema',  12, 10, 186, 22, 11); L.FontColor := TAlphaColorRec.White;
+  lblAktOprem := MkLbl(R, '—', 12, 42, 186, 48, 32, True); lblAktOprem.FontColor := TAlphaColorRec.White;
+  MkLbl(R, 'u funkciji', 12, 86, 186, 18, 10).FontColor := TAlphaColorRec.White;
+
+  R := MkRect(tiDashboard, 472, 64, 210, 110, $FFFF9800);
+  L := MkLbl(R, 'Otvoreni Nalozi', 12, 10, 186, 22, 11); L.FontColor := TAlphaColorRec.White;
+  lblNaCek := MkLbl(R, '—', 12, 42, 186, 48, 32, True); lblNaCek.FontColor := TAlphaColorRec.White;
+  MkLbl(R, 'na cekanju / u toku', 12, 86, 186, 18, 10).FontColor := TAlphaColorRec.White;
+
+  R := MkRect(tiDashboard, 698, 64, 210, 110, $FF9C27B0);
+  L := MkLbl(R, 'Zavrseni Nalozi', 12, 10, 186, 22, 11); L.FontColor := TAlphaColorRec.White;
+  lblZavrs := MkLbl(R, '—', 12, 42, 186, 48, 32, True); lblZavrs.FontColor := TAlphaColorRec.White;
+  MkLbl(R, 'kompletiranih', 12, 86, 186, 18, 10).FontColor := TAlphaColorRec.White;
+
+  btnRefreshDash := MkBtn(tiDashboard, '↻  Osvezi', 20, 190, 130, 36);
+  btnRefreshDash.OnClick := btnRefreshDashClick;
+
+  MkLbl(tiDashboard, 'Metode odrzavanja:', 20, 244, 400, 22, 13, True).FontColor := $FF1F4E79;
+
+  DashY := 272;
+  RR := MkRect(tiDashboard, 20, DashY, 920, 36, $FFF0F7FF); RR.XRadius:=4; RR.YRadius:=4; MkLbl(RR,'Rutinsko',10,8,170,20,12,True); MkLbl(RR,'Planirano preventivno — zamena ulja, podmazivanje, periodicne provere',186,8,720,20,12); DashY:=DashY+38;
+  RR := MkRect(tiDashboard, 20, DashY, 920, 36, $FFFFF8F0); RR.XRadius:=4; RR.YRadius:=4; MkLbl(RR,'Popravka',10,8,170,20,12,True); MkLbl(RR,'Korektivno odrzavanje posle otkaza — zamena delova, servis',186,8,720,20,12); DashY:=DashY+38;
+  RR := MkRect(tiDashboard, 20, DashY, 920, 36, $FFF0FFF4); RR.XRadius:=4; RR.YRadius:=4; MkLbl(RR,'Inspekcija',10,8,170,20,12,True); MkLbl(RR,'Bezbednosna inspekcija pre/posle sezone — vizuelna i funkcionalna',186,8,720,20,12); DashY:=DashY+38;
+  RR := MkRect(tiDashboard, 20, DashY, 920, 36, $FFFFF0F0); RR.XRadius:=4; RR.YRadius:=4; MkLbl(RR,'Hitno',10,8,170,20,12,True); MkLbl(RR,'Hitan zahvat — visok prioritet, odmah rasporediti tehnicara',186,8,720,20,12); DashY:=DashY+38;
+  RR := MkRect(tiDashboard, 20, DashY, 920, 36, $FFF5F0FF); RR.XRadius:=4; RR.YRadius:=4; MkLbl(RR,'Nadogradnja',10,8,170,20,12,True); MkLbl(RR,'Ugradnja nove komponente ili poboljsanje opreme',186,8,720,20,12); DashY:=DashY+38;
+
+  { ════════════════════════════════════════════════════════════
+    TAB OPREMA
+    ════════════════════════════════════════════════════════════ }
+
+  { Lista }
+  pnlOpList := TPanel.Create(Self);
+  pnlOpList.Parent := tiOprema;
+  pnlOpList.Width  := 430;
+  pnlOpList.Align  := TAlignLayout.Left;
+
+  lblOpTitle := MkLbl(pnlOpList, 'Oprema Centra', 14, 14, 300, 30, 17, True);
+  lblOpTitle.FontColor := $FF1F4E79;
+
+  edtOpSearch := MkEdit(pnlOpList, 14, 56, 278, 'Pretraga po nazivu ili tipu...');
+  btnOpSearch  := MkBtn(pnlOpList, 'Trazi', 300, 56, 96, 34);
+  btnOpSearch.OnClick := btnOpSearchClick;
+
+  lstOprema := TListView.Create(Self);
+  lstOprema.Parent     := pnlOpList;
+  lstOprema.Position.X := 14; lstOprema.Position.Y := 104;
+  lstOprema.Width      := 402; lstOprema.Height     := 490;
+  lstOprema.ItemAppearance.ItemAppearance := 'ListItemRightDetail';
+
+  btnOpNew    := MkBtn(pnlOpList, '+ Nova',    14, 606, 118, 36);
+  btnOpEdit   := MkBtn(pnlOpList, '✎ Izmeni', 140, 606, 118, 36);
+  btnOpDelete := MkBtn(pnlOpList, '✕ Obrisi', 266, 606, 118, 36);
+  btnOpNew.OnClick    := btnOpNewClick;
+  btnOpEdit.OnClick   := btnOpEditClick;
+  btnOpDelete.OnClick := btnOpDeleteClick;
+
+  { Forma }
+  pnlOpDetail := TPanel.Create(Self);
+  pnlOpDetail.Parent  := tiOprema;
+  pnlOpDetail.Align   := TAlignLayout.Client;
+  pnlOpDetail.Visible := False;
+
+  lblOpFormTitle := MkLbl(pnlOpDetail, 'Nova Oprema', 18, 16, 500, 30, 16, True);
+  lblOpFormTitle.FontColor := $FF1F4E79;
+
+  MkLbl(pnlOpDetail, 'Naziv *',                   18,  60, 200, 20, 12);
+  edtOpNaziv  := MkEdit(pnlOpDetail, 18,  80, 490);
+
+  MkLbl(pnlOpDetail, 'Tip *',                      18, 124, 200, 20, 12);
+  cmbOpTip := MkCombo(pnlOpDetail, 18, 144, 230);
+  cmbOpTip.Items.AddStrings(['Camac','Jet Ski','Kajak','Oprema','Ostalo']);
+
+  MkLbl(pnlOpDetail, 'Status *',                  262, 124, 200, 20, 12);
+  cmbOpStatus := MkCombo(pnlOpDetail, 262, 144, 246);
+  cmbOpStatus.Items.AddStrings(['Aktivna','Neaktivna','Na popravci','Penzionisana']);
+
+  MkLbl(pnlOpDetail, 'Model',                      18, 190, 200, 20, 12);
+  edtOpModel  := MkEdit(pnlOpDetail, 18, 210, 490);
+
+  MkLbl(pnlOpDetail, 'Serijski broj',              18, 254, 200, 20, 12);
+  edtOpSerial := MkEdit(pnlOpDetail, 18, 274, 490);
+
+  MkLbl(pnlOpDetail, 'Datum nabavke (GGGG-MM-DD)', 18, 318, 320, 20, 12);
+  edtOpDatum  := MkEdit(pnlOpDetail, 18, 338, 220);
+
+  MkLbl(pnlOpDetail, 'Napomena',                   18, 382, 200, 20, 12);
+  memoOpNap   := MkMemo(pnlOpDetail, 18, 402, 490, 96);
+
+  lblOpError  := MkLbl(pnlOpDetail, '', 18, 510, 490, 24, 12);
+  lblOpError.FontColor := TAlphaColorRec.Crimson;
+
+  btnOpSave   := MkBtn(pnlOpDetail, '💾  Sacuvaj', 18, 544, 142, 38);
+  btnOpCancel := MkBtn(pnlOpDetail, 'Otkazati',   168, 544, 120, 38);
+  btnOpSave.OnClick   := btnOpSaveClick;
+  btnOpCancel.OnClick := btnOpCancelClick;
+
+  { ════════════════════════════════════════════════════════════
+    TAB NALOZI
+    ════════════════════════════════════════════════════════════ }
+
+  { Lista }
+  pnlNalList := TPanel.Create(Self);
+  pnlNalList.Parent := tiNalozi;
+  pnlNalList.Width  := 440;
+  pnlNalList.Align  := TAlignLayout.Left;
+
+  lblNalTitle := MkLbl(pnlNalList, 'Nalozi Odrzavanja', 14, 14, 300, 30, 17, True);
+  lblNalTitle.FontColor := $FF1F4E79;
+
+  cmbNalFilter := MkCombo(pnlNalList, 14, 56, 232);
+  cmbNalFilter.Items.AddStrings(['Svi statusi','Na cekanju','U toku','Zavrseno']);
+  cmbNalFilter.Text := 'Svi statusi';
+
+  btnNalFilter := MkBtn(pnlNalList, 'Filtriraj', 254, 56, 102, 34);
+  btnNalFilter.OnClick := btnNalFilterClick;
+
+  lstNalozi := TListView.Create(Self);
+  lstNalozi.Parent     := pnlNalList;
+  lstNalozi.Position.X := 14; lstNalozi.Position.Y := 104;
+  lstNalozi.Width      := 412; lstNalozi.Height     := 490;
+  lstNalozi.ItemAppearance.ItemAppearance := 'ListItemRightDetail';
+
+  btnNalNew    := MkBtn(pnlNalList, '+ Nov',     14, 606, 118, 36);
+  btnNalEdit   := MkBtn(pnlNalList, '✎ Izmeni', 140, 606, 118, 36);
+  btnNalDelete := MkBtn(pnlNalList, '✕ Obrisi', 266, 606, 118, 36);
+  btnNalNew.OnClick    := btnNalNewClick;
+  btnNalEdit.OnClick   := btnNalEditClick;
+  btnNalDelete.OnClick := btnNalDeleteClick;
+
+  { Forma }
+  pnlNalDetail := TPanel.Create(Self);
+  pnlNalDetail.Parent  := tiNalozi;
+  pnlNalDetail.Align   := TAlignLayout.Client;
+  pnlNalDetail.Visible := False;
+
+  lblNalFormTitle := MkLbl(pnlNalDetail, 'Novi Nalog', 18, 16, 500, 30, 16, True);
+  lblNalFormTitle.FontColor := $FF1F4E79;
+
+  MkLbl(pnlNalDetail, 'Oprema *',                    18,  60, 300, 20, 12);
+  cmbNalOprema  := MkCombo(pnlNalDetail, 18,  80, 490);
+
+  MkLbl(pnlNalDetail, 'Datum * (GGGG-MM-DD)',         18, 124, 260, 20, 12);
+  edtNalDatum   := MkEdit(pnlNalDetail, 18, 144, 220);
+
+  MkLbl(pnlNalDetail, 'Tip *',                       252, 124, 200, 20, 12);
+  cmbNalTip     := MkCombo(pnlNalDetail, 252, 144, 256);
+  cmbNalTip.Items.AddStrings(['Rutinsko','Popravka','Inspekcija','Hitno','Nadogradnja']);
+
+  MkLbl(pnlNalDetail, 'Status *',                     18, 190, 200, 20, 12);
+  cmbNalStatus  := MkCombo(pnlNalDetail, 18, 210, 220);
+  cmbNalStatus.Items.AddStrings(['Na cekanju','U toku','Zavrseno']);
+
+  MkLbl(pnlNalDetail, 'Trosak (RSD)',                252, 190, 200, 20, 12);
+  edtNalTrosak  := MkEdit(pnlNalDetail, 252, 210, 256);
+
+  MkLbl(pnlNalDetail, 'Izvrsio',                      18, 256, 200, 20, 12);
+  edtNalIzvrsio := MkEdit(pnlNalDetail, 18, 276, 490);
+
+  MkLbl(pnlNalDetail, 'Sledeci rok (GGGG-MM-DD)',      18, 322, 300, 20, 12);
+  edtNalSledeci := MkEdit(pnlNalDetail, 18, 342, 220);
+
+  MkLbl(pnlNalDetail, 'Opis radova *',                 18, 388, 200, 20, 12);
+  memoNalOpis   := MkMemo(pnlNalDetail, 18, 408, 490, 88);
+
+  MkLbl(pnlNalDetail, 'Interna napomena',              18, 508, 200, 20, 12);
+  memoNalNap    := MkMemo(pnlNalDetail, 18, 528, 490, 56);
+
+  lblNalError   := MkLbl(pnlNalDetail, '', 18, 596, 490, 24, 12);
+  lblNalError.FontColor := TAlphaColorRec.Crimson;
+
+  btnNalSave   := MkBtn(pnlNalDetail, '💾  Sacuvaj',  18, 630, 142, 38);
+  btnNalCancel := MkBtn(pnlNalDetail, 'Otkazati',    168, 630, 120, 38);
+  btnNalSave.OnClick   := btnNalSaveClick;
+  btnNalCancel.OnClick := btnNalCancelClick;
+end;
+
+{ ===================================================================
+  FORM LIFECYCLE
+  =================================================================== }
+
+procedure TfrmMain.FormCreate(Sender: TObject);
+begin
+  BuildUI;
+end;
+
+procedure TfrmMain.FormShow(Sender: TObject);
+begin
+  { Prikazi putanju do baze u status baru }
+  lblStatusPath.Text := 'Baza: ' +
+    ExtractFilePath(ParamStr(0)) + 'Baza\ODRZAVANJE.FDB';
+
+  { DataModule je vec otvorio konekciju u svom Create — odmah ucitavamo }
+  if dmData.IsConnected then
+  begin
+    tcMain.ActiveTab := tiDashboard;
+    RefreshDashboard;
+    LoadOprema;
+    LoadNalozi;
+  end
+  else
+    ShowMessage('Baza nije dostupna. Proverite Baza\ folder i Firebird DLL-ove.');
+end;
+
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  // dmData se sam cisti u svom destruktoru
+end;
+
+procedure TfrmMain.tcMainChange(Sender: TObject);
+begin
+  if tcMain.ActiveTab = tiDashboard then
+    RefreshDashboard;
+end;
+
+{ ===================================================================
+  DASHBOARD
+  =================================================================== }
+
+procedure TfrmMain.btnNavDashClick(Sender: TObject);
+begin
+  tcMain.ActiveTab := tiDashboard;
+end;
+
+procedure TfrmMain.btnNavOpClick(Sender: TObject);
+begin
+  tcMain.ActiveTab := tiOprema;
+end;
+
+procedure TfrmMain.btnNavNalClick(Sender: TObject);
+begin
+  tcMain.ActiveTab := tiNalozi;
+end;
+
+procedure TfrmMain.RefreshDashboard;
+begin
+  if not dmData.IsConnected then Exit;
+  try
+    lblUkOprem.Text  := dmData.ExecScalar('SELECT COUNT(*) FROM EQUIPMENT_CENTER').ToString;
+    lblAktOprem.Text := dmData.ExecScalar(
+      'SELECT COUNT(*) FROM EQUIPMENT_CENTER WHERE EQ_STATUS = ''Aktivna''').ToString;
+    lblNaCek.Text    := dmData.ExecScalar(
+      'SELECT COUNT(*) FROM MAINTENANCE_LOG WHERE ML_STATUS IN (''Na cekanju'',''U toku'')').ToString;
+    lblZavrs.Text    := dmData.ExecScalar(
+      'SELECT COUNT(*) FROM MAINTENANCE_LOG WHERE ML_STATUS = ''Zavrseno''').ToString;
+  except
+    on E: Exception do
+      lblDashTitle.Text := 'Greska: ' + E.Message;
+  end;
+end;
+
+procedure TfrmMain.btnRefreshDashClick(Sender: TObject);
+begin
+  RefreshDashboard;
+end;
+
+{ ===================================================================
+  OPREMA — LISTA
+  =================================================================== }
+
+procedure TfrmMain.LoadOprema(const AFilter: string);
+var
+  Q   : TFDQuery;
+  SQL : string;
+  Item: TListViewItem;
+begin
+  lstOprema.Items.Clear;
+  if not dmData.IsConnected then Exit;
+
+  SQL := 'SELECT EQ_ID, EQ_NAME, EQ_TYPE, EQ_STATUS FROM EQUIPMENT_CENTER ';
+  if Trim(AFilter) <> '' then
+    SQL := SQL +
+      'WHERE UPPER(EQ_NAME) CONTAINING UPPER(''' + AFilter + ''') ' +
+      'OR UPPER(EQ_TYPE) CONTAINING UPPER(''' + AFilter + ''') ';
+  SQL := SQL + 'ORDER BY EQ_NAME';
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := SQL;
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Item        := lstOprema.Items.Add;
+      Item.Text   := Q.FieldByName('EQ_NAME').AsString;
+      Item.Detail := Q.FieldByName('EQ_TYPE').AsString + '  ·  ' +
+                     Q.FieldByName('EQ_STATUS').AsString;
+      Item.Tag    := Q.FieldByName('EQ_ID').AsInteger;
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TfrmMain.btnOpSearchClick(Sender: TObject);
+begin
+  LoadOprema(edtOpSearch.Text);
+end;
+
+procedure TfrmMain.btnOpNewClick(Sender: TObject);
+begin
+  ShowOpDetail(True);
+end;
+
+procedure TfrmMain.btnOpEditClick(Sender: TObject);
+begin
+  if OpSelectedID < 0 then begin ShowMessage('Izaberite opremu za izmenu.'); Exit; end;
+  ShowOpDetail(False);
+end;
+
+procedure TfrmMain.btnOpDeleteClick(Sender: TObject);
+var
+  ID: Integer;
+  Q : TFDQuery;
+begin
+  ID := OpSelectedID;
+  if ID < 0 then begin ShowMessage('Izaberite opremu za brisanje.'); Exit; end;
+  if MessageDlg('Brisanjem opreme brisaju se i svi njeni nalozi. Nastaviti?',
+    TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then Exit;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := 'DELETE FROM EQUIPMENT_CENTER WHERE EQ_ID = :ID';
+    Q.ParamByName('ID').AsInteger := ID;
+    Q.ExecSQL;
+    dmData.CommitWork;
+    LoadOprema;
+    HideOpDetail;
+    RefreshDashboard;
+  finally
+    Q.Free;
+  end;
+end;
+
+{ ===================================================================
+  OPREMA — FORMA
+  =================================================================== }
+
+function TfrmMain.OpSelectedID: Integer;
+begin
+  Result := -1;
+  if lstOprema.Selected <> nil then
+    Result := lstOprema.Selected.Tag;
+end;
+
+procedure TfrmMain.SetOpError(const S: string);
+begin
+  lblOpError.Text := S;
+end;
+
+procedure TfrmMain.ShowOpDetail(ANew: Boolean);
+begin
+  FOpIsNew    := ANew;
+  pnlOpDetail.Visible := True;
+  if ANew then
+  begin
+    lblOpFormTitle.Text := 'Nova Oprema';
+    edtOpNaziv.Text    := '';
+    cmbOpTip.Text      := 'Camac';
+    cmbOpStatus.Text   := 'Aktivna';
+    edtOpModel.Text    := '';
+    edtOpSerial.Text   := '';
+    edtOpDatum.Text    := '';
+    memoOpNap.Text     := '';
+    FOpCurrentID       := -1;
+  end
+  else
+  begin
+    lblOpFormTitle.Text := 'Izmena Opreme';
+    FOpCurrentID := OpSelectedID;
+    PopulateOpDetail(FOpCurrentID);
+  end;
+  SetOpError('');
+end;
+
+procedure TfrmMain.HideOpDetail;
+begin
+  pnlOpDetail.Visible := False;
+end;
+
+procedure TfrmMain.PopulateOpDetail(AID: Integer);
+var
+  Q: TFDQuery;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := 'SELECT * FROM EQUIPMENT_CENTER WHERE EQ_ID = :ID';
+    Q.ParamByName('ID').AsInteger := AID;
+    Q.Open;
+    if not Q.IsEmpty then
+    begin
+      edtOpNaziv.Text  := Q.FieldByName('EQ_NAME').AsString;
+      cmbOpTip.Text    := Q.FieldByName('EQ_TYPE').AsString;
+      edtOpModel.Text  := Q.FieldByName('EQ_MODEL').AsString;
+      edtOpSerial.Text := Q.FieldByName('EQ_SERIAL').AsString;
+      cmbOpStatus.Text := Q.FieldByName('EQ_STATUS').AsString;
+      edtOpDatum.Text  := Q.FieldByName('EQ_PURCHASE_DATE').AsString;
+      memoOpNap.Text   := Q.FieldByName('EQ_NOTES').AsString;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TfrmMain.btnOpSaveClick(Sender: TObject);
+var
+  Q: TFDQuery;
+begin
+  SetOpError('');
+  if Trim(edtOpNaziv.Text) = '' then begin SetOpError('Naziv je obavezan.'); Exit; end;
+  if Trim(cmbOpTip.Text)   = '' then begin SetOpError('Tip je obavezan.');   Exit; end;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    if FOpCurrentID < 0 then
+      Q.SQL.Text :=
+        'INSERT INTO EQUIPMENT_CENTER ' +
+        '(EQ_NAME, EQ_TYPE, EQ_MODEL, EQ_SERIAL, EQ_STATUS, EQ_PURCHASE_DATE, EQ_NOTES) ' +
+        'VALUES (:NAME, :TYPE, :MODEL, :SERIAL, :STATUS, :PDATE, :NOTES)'
+    else
+    begin
+      Q.SQL.Text :=
+        'UPDATE EQUIPMENT_CENTER SET EQ_NAME=:NAME, EQ_TYPE=:TYPE, ' +
+        'EQ_MODEL=:MODEL, EQ_SERIAL=:SERIAL, EQ_STATUS=:STATUS, ' +
+        'EQ_PURCHASE_DATE=:PDATE, EQ_NOTES=:NOTES WHERE EQ_ID=:ID';
+      Q.ParamByName('ID').AsInteger := FOpCurrentID;
+    end;
+
+    Q.ParamByName('NAME').AsString   := Trim(edtOpNaziv.Text);
+    Q.ParamByName('TYPE').AsString   := Trim(cmbOpTip.Text);
+    Q.ParamByName('MODEL').AsString  := Trim(edtOpModel.Text);
+    Q.ParamByName('SERIAL').AsString := Trim(edtOpSerial.Text);
+    Q.ParamByName('STATUS').AsString := Trim(cmbOpStatus.Text);
+    Q.ParamByName('NOTES').AsString  := Trim(memoOpNap.Text);
+
+    if Trim(edtOpDatum.Text) <> '' then
+      Q.ParamByName('PDATE').AsDate := StrToDateDef(edtOpDatum.Text, Date)
+    else
+      Q.ParamByName('PDATE').Clear;
+
+    Q.ExecSQL;
+    dmData.CommitWork;
+    LoadOprema;
+    HideOpDetail;
+    RefreshDashboard;
+  except
+    on E: Exception do
+      SetOpError('Greska: ' + E.Message);
+  end;
+  Q.Free;
+end;
+
+procedure TfrmMain.btnOpCancelClick(Sender: TObject);
+begin
+  HideOpDetail;
+end;
+
+{ ===================================================================
+  NALOZI — LISTA
+  =================================================================== }
+
+procedure TfrmMain.LoadNalozi(const AStatusFilter: string);
+var
+  Q   : TFDQuery;
+  SQL : string;
+  Item: TListViewItem;
+begin
+  lstNalozi.Items.Clear;
+  if not dmData.IsConnected then Exit;
+
+  SQL :=
+    'SELECT M.ML_ID, M.ML_DATE, M.ML_TYPE, M.ML_STATUS, ' +
+    '       E.EQ_NAME, M.ML_DESCRIPTION ' +
+    'FROM MAINTENANCE_LOG M ' +
+    'JOIN EQUIPMENT_CENTER E ON E.EQ_ID = M.ML_EQ_ID ';
+
+  if (Trim(AStatusFilter) <> '') and (AStatusFilter <> 'Svi statusi') then
+    SQL := SQL + 'WHERE M.ML_STATUS = ''' + AStatusFilter + ''' ';
+
+  SQL := SQL + 'ORDER BY M.ML_DATE DESC';
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := SQL;
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Item        := lstNalozi.Items.Add;
+      Item.Text   := Q.FieldByName('EQ_NAME').AsString + '  —  ' +
+                     Q.FieldByName('ML_TYPE').AsString;
+      Item.Detail := Q.FieldByName('ML_DATE').AsString + '  [' +
+                     Q.FieldByName('ML_STATUS').AsString + ']';
+      Item.Tag    := Q.FieldByName('ML_ID').AsInteger;
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TfrmMain.btnNalFilterClick(Sender: TObject);
+begin
+  LoadNalozi(cmbNalFilter.Text);
+end;
+
+procedure TfrmMain.btnNalNewClick(Sender: TObject);
+begin
+  ShowNalDetail(True);
+end;
+
+procedure TfrmMain.btnNalEditClick(Sender: TObject);
+begin
+  if NalSelectedID < 0 then begin ShowMessage('Izaberite nalog za izmenu.'); Exit; end;
+  ShowNalDetail(False);
+end;
+
+procedure TfrmMain.btnNalDeleteClick(Sender: TObject);
+var
+  ID: Integer;
+  Q : TFDQuery;
+begin
+  ID := NalSelectedID;
+  if ID < 0 then begin ShowMessage('Izaberite nalog za brisanje.'); Exit; end;
+  if MessageDlg('Obrisati ovaj nalog?',
+    TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then Exit;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := 'DELETE FROM MAINTENANCE_LOG WHERE ML_ID = :ID';
+    Q.ParamByName('ID').AsInteger := ID;
+    Q.ExecSQL;
+    dmData.CommitWork;
+    LoadNalozi(cmbNalFilter.Text);
+    HideNalDetail;
+    RefreshDashboard;
+  finally
+    Q.Free;
+  end;
+end;
+
+{ ===================================================================
+  NALOZI — FORMA
+  =================================================================== }
+
+function TfrmMain.NalSelectedID: Integer;
+begin
+  Result := -1;
+  if lstNalozi.Selected <> nil then
+    Result := lstNalozi.Selected.Tag;
+end;
+
+procedure TfrmMain.SetNalError(const S: string);
+begin
+  lblNalError.Text := S;
+end;
+
+procedure TfrmMain.LoadEquipCombo;
+var
+  Q: TFDQuery;
+  N: Integer;
+begin
+  cmbNalOprema.Items.Clear;
+  SetLength(FEquipIDs, 0);
+  N := 0;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   :=
+      'SELECT EQ_ID, EQ_NAME, EQ_TYPE FROM EQUIPMENT_CENTER ORDER BY EQ_NAME';
+    Q.Open;
+    while not Q.Eof do
+    begin
+      cmbNalOprema.Items.Add(
+        Q.FieldByName('EQ_NAME').AsString + ' (' +
+        Q.FieldByName('EQ_TYPE').AsString + ')');
+      SetLength(FEquipIDs, N + 1);
+      FEquipIDs[N] := Q.FieldByName('EQ_ID').AsInteger;
+      Inc(N);
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TfrmMain.ShowNalDetail(ANew: Boolean);
+begin
+  FNalIsNew := ANew;
+  LoadEquipCombo;
+  pnlNalDetail.Visible := True;
+
+  if ANew then
+  begin
+    lblNalFormTitle.Text   := 'Novi Nalog Odrzavanja';
+    cmbNalOprema.ItemIndex := -1;
+    edtNalDatum.Text       := FormatDateTime('YYYY-MM-DD', Now);
+    cmbNalTip.Text         := 'Rutinsko';
+    cmbNalStatus.Text      := 'Na cekanju';
+    edtNalTrosak.Text      := '0';
+    edtNalIzvrsio.Text     := '';
+    edtNalSledeci.Text     := '';
+    memoNalOpis.Text       := '';
+    memoNalNap.Text        := '';
+    FNalCurrentID          := -1;
+  end
+  else
+  begin
+    lblNalFormTitle.Text := 'Izmena Naloga';
+    FNalCurrentID := NalSelectedID;
+    PopulateNalDetail(FNalCurrentID);
+  end;
+  SetNalError('');
+end;
+
+procedure TfrmMain.HideNalDetail;
+begin
+  pnlNalDetail.Visible := False;
+end;
+
+procedure TfrmMain.PopulateNalDetail(AID: Integer);
+var
+  Q   : TFDQuery;
+  EqID: Integer;
+  I   : Integer;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    Q.SQL.Text   := 'SELECT * FROM MAINTENANCE_LOG WHERE ML_ID = :ID';
+    Q.ParamByName('ID').AsInteger := AID;
+    Q.Open;
+    if not Q.IsEmpty then
+    begin
+      EqID := Q.FieldByName('ML_EQ_ID').AsInteger;
+      cmbNalOprema.ItemIndex := -1;
+      for I := 0 to High(FEquipIDs) do
+        if FEquipIDs[I] = EqID then begin cmbNalOprema.ItemIndex := I; Break; end;
+
+      edtNalDatum.Text   := Q.FieldByName('ML_DATE').AsString;
+      cmbNalTip.Text     := Q.FieldByName('ML_TYPE').AsString;
+      cmbNalStatus.Text  := Q.FieldByName('ML_STATUS').AsString;
+      edtNalIzvrsio.Text := Q.FieldByName('ML_PERFORMED_BY').AsString;
+      edtNalTrosak.Text  := Q.FieldByName('ML_COST').AsString;
+      edtNalSledeci.Text := Q.FieldByName('ML_NEXT_DUE').AsString;
+      memoNalOpis.Text   := Q.FieldByName('ML_DESCRIPTION').AsString;
+      memoNalNap.Text    := Q.FieldByName('ML_NOTES').AsString;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TfrmMain.btnNalSaveClick(Sender: TObject);
+var
+  Q    : TFDQuery;
+  EqIdx: Integer;
+begin
+  SetNalError('');
+  EqIdx := cmbNalOprema.ItemIndex;
+  if EqIdx < 0         then begin SetNalError('Izaberite opremu.');       Exit; end;
+  if Trim(edtNalDatum.Text) = '' then begin SetNalError('Datum je obavezan.'); Exit; end;
+  if Trim(memoNalOpis.Text) = '' then begin SetNalError('Opis je obavezan.');  Exit; end;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := dmData.Conn;
+    if FNalCurrentID < 0 then
+      Q.SQL.Text :=
+        'INSERT INTO MAINTENANCE_LOG ' +
+        '(ML_EQ_ID, ML_DATE, ML_TYPE, ML_DESCRIPTION, ML_PERFORMED_BY, ' +
+        ' ML_COST, ML_STATUS, ML_NEXT_DUE, ML_NOTES) ' +
+        'VALUES (:EQID,:MDATE,:TYPE,:DESC,:PERF,:COST,:STATUS,:NEXTDUE,:NOTES)'
+    else
+    begin
+      Q.SQL.Text :=
+        'UPDATE MAINTENANCE_LOG SET ' +
+        'ML_EQ_ID=:EQID, ML_DATE=:MDATE, ML_TYPE=:TYPE, ' +
+        'ML_DESCRIPTION=:DESC, ML_PERFORMED_BY=:PERF, ' +
+        'ML_COST=:COST, ML_STATUS=:STATUS, ML_NEXT_DUE=:NEXTDUE, ML_NOTES=:NOTES ' +
+        'WHERE ML_ID=:ID';
+      Q.ParamByName('ID').AsInteger := FNalCurrentID;
+    end;
+
+    Q.ParamByName('EQID').AsInteger  := FEquipIDs[EqIdx];
+    Q.ParamByName('MDATE').AsDate    := StrToDateDef(edtNalDatum.Text, Date);
+    Q.ParamByName('TYPE').AsString   := Trim(cmbNalTip.Text);
+    Q.ParamByName('DESC').AsString   := Trim(memoNalOpis.Text);
+    Q.ParamByName('PERF').AsString   := Trim(edtNalIzvrsio.Text);
+    Q.ParamByName('COST').AsFloat    := StrToFloatDef(edtNalTrosak.Text, 0);
+    Q.ParamByName('STATUS').AsString := Trim(cmbNalStatus.Text);
+    Q.ParamByName('NOTES').AsString  := Trim(memoNalNap.Text);
+
+    if Trim(edtNalSledeci.Text) <> '' then
+      Q.ParamByName('NEXTDUE').AsDate := StrToDateDef(edtNalSledeci.Text, Date)
+    else
+      Q.ParamByName('NEXTDUE').Clear;
+
+    Q.ExecSQL;
+    dmData.CommitWork;
+    LoadNalozi(cmbNalFilter.Text);
+    HideNalDetail;
+    RefreshDashboard;
+  except
+    on E: Exception do
+      SetNalError('Greska: ' + E.Message);
+  end;
+  Q.Free;
+end;
+
+procedure TfrmMain.btnNalCancelClick(Sender: TObject);
+begin
+  HideNalDetail;
+end;
+
+end.
+
