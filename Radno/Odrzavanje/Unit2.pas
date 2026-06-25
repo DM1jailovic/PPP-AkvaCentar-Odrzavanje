@@ -151,7 +151,8 @@ var
 begin
   { Baza\ folder pored .exe — isti pattern kao u primeru }
   { Go up 2 levels during debug (Win32\Debug\), stay put in release }
-  if TDirectory.Exists(TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), '')) then
+  { Koristimo TFile.Exists za fbembed.dll — pouzdan znak debug build-a }
+  if TFile.Exists(TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), 'fbembed.dll')) then
     LBazaFolder := TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), 'Baza')
   else
     LBazaFolder := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Baza');
@@ -162,7 +163,7 @@ procedure TdmData.EnsureFolders;
 var
   LBazaFolder: string;
 begin
-  if TDirectory.Exists(TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), '')) then
+  if TFile.Exists(TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), 'fbembed.dll')) then
     LBazaFolder := TPath.Combine(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..'), 'Baza')
   else
     LBazaFolder := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Baza');
@@ -198,7 +199,9 @@ begin
   FConn.Params.Add('Password=masterkey');
   FConn.Params.Add('CharacterSet=UTF8');
   FConn.Params.Add('Protocol=Local');
-  FConn.Params.Add('CreateDatabase=Yes');
+  { CreateDatabase=Yes samo ako baza jos ne postoji — inace Firebird baca grešku }
+  if not TFile.Exists(GetDatabasePath) then
+    FConn.Params.Add('CreateDatabase=Yes');
 end;
 
 { ===================================================================
@@ -253,6 +256,7 @@ begin
       'RN_STATUS VARCHAR(20) DEFAULT ''Otvoren'', RN_PRIORITET INTEGER DEFAULT 3, ' +
       'RN_TROSAK DECIMAL(10,2) DEFAULT 0, RN_BLOKIRA_REZ CHAR(1) DEFAULT ''N'', ' +
       'RN_FOTO_OTVAR VARCHAR(500), RN_FOTO_ZATVR VARCHAR(500), RN_NAPOMENA VARCHAR(500), ' +
+      'RN_FOTO_OTVAR_BLOB BLOB SUB_TYPE 0, RN_FOTO_ZATVR_BLOB BLOB SUB_TYPE 0, ' +
       'CONSTRAINT PK_RADNI_NALOG PRIMARY KEY (RN_ID))');
   Seq('SEQ_RN_ID');
   Trg('CREATE OR ALTER TRIGGER TRG_RN_BI FOR RADNI_NALOG ACTIVE BEFORE INSERT POSITION 0 ' +
@@ -287,6 +291,13 @@ begin
       'AS BEGIN IF (NEW.KO_ID IS NULL OR NEW.KO_ID = 0) THEN NEW.KO_ID = NEXT VALUE FOR SEQ_KO_ID; END');
 
   FConn.Commit;
+
+  { Migracija — dodaj BLOB kolone za fotografije ako vec ne postoje }
+  try FConn.ExecSQL('ALTER TABLE RADNI_NALOG ADD RN_FOTO_OTVAR_BLOB BLOB SUB_TYPE 0'); except end;
+  try FConn.ExecSQL('ALTER TABLE RADNI_NALOG ADD RN_FOTO_ZATVR_BLOB BLOB SUB_TYPE 0'); except end;
+  try FConn.ExecSQL('ALTER TABLE KORISNIK_ODR ADD KO_ULOGA VARCHAR(50)'); except end;
+  try FConn.ExecSQL('ALTER TABLE KORISNIK_ODR ADD KO_FOTO BLOB SUB_TYPE 0'); except end;
+  try FConn.Commit; except end;
 end;
 
 function TdmData.IsConnected: Boolean;
